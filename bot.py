@@ -9,7 +9,7 @@
 
 from config import ReadConfig
 from login import LoginTool
-
+import itertools
 import signal
 import sys
 import os
@@ -35,7 +35,9 @@ class TorrentBot(ContextDecorator):
         self.login = login
         self.torrent_util = torrent_util
         self.base_url = str(config.get_bot_config("byrbt-url"))
-        self.torrent_url = self._get_url('torrents.php')
+        # 轮询
+        self.polling_pages = ["torrents.php?spstate=2&sort=8&type=desc", "torrents.php", ]
+        # self.torrent_url = self._get_url('torrents.php')
         self.cookie_jar = RequestsCookieJar()
         self.byrbt_cookies = login.load_cookie()
         if self.byrbt_cookies is not None:
@@ -259,7 +261,7 @@ class TorrentBot(ContextDecorator):
     def get_ok_torrent(self, torrent_infos):
         ok_infos = list()
         if len(torrent_infos) >= 20:
-            # 遇到free或者免费种子太过了，择优选取，标准是(下载数/上传数)>20，并且文件大小大于20GB
+            # 遇到free或者免费种子太过了，择优选取，标准是(下载数/上传数)>0.5，并且文件大小大于5GB
             print('符合要求的种子过多，可能开启Free活动了，提高种子获取标准')
             for torrent_info in torrent_infos:
                 if torrent_info['seed_id'] in self.old_torrent:
@@ -270,16 +272,16 @@ class TorrentBot(ContextDecorator):
                 if torrent_info['seeding'] <= 0 or torrent_info['downloading'] < 0:
                     continue
                 if torrent_info['seeding'] != 0 and float(torrent_info['downloading']) / float(
-                        torrent_info['seeding']) < 20:
+                        torrent_info['seeding']) < 0.8:
                     continue
                 file_size = torrent_info['file_size'][0]
                 file_size = file_size.replace('GiB', '')
                 file_size = float(file_size.strip())
-                if file_size < 20.0:
+                if file_size < 5.0:
                     continue
                 ok_infos.append(torrent_info)
         else:
-            # 正常种子选择标准是免费种子并且(下载数/上传数)>0.6
+            # 正常种子选择标准是免费种子并且(下载数/上传数)>0.4
             for torrent_info in torrent_infos:
                 if torrent_info['seed_id'] in self.old_torrent:
                     continue
@@ -289,7 +291,7 @@ class TorrentBot(ContextDecorator):
                 if torrent_info['seeding'] <= 0 or torrent_info['downloading'] < 0:
                     continue
                 if torrent_info['seeding'] != 0 and float(torrent_info['downloading']) / float(
-                        torrent_info['seeding']) < 0.6:
+                        torrent_info['seeding']) < 0.3:
                     continue
                 ok_infos.append(torrent_info)
         return ok_infos
@@ -376,6 +378,7 @@ class TorrentBot(ContextDecorator):
         scan_interval_in_sec = 60
         check_disk_space_interval_in_sec = 500
         last_check_disk_space_time = -1
+        iter = itertools.cycle(self.polling_pages)
         while True:
             now_time = int(time.time())
             if now_time - last_check_disk_space_time > check_disk_space_interval_in_sec:
@@ -393,7 +396,7 @@ class TorrentBot(ContextDecorator):
             torrent_infos = None
             try:
                 torrents_soup = BeautifulSoup(
-                    requests.get(self.torrent_url, cookies=self.cookie_jar, headers=self.headers,
+                    requests.get(self._get_url(next(iter)), cookies=self.cookie_jar, headers=self.headers,
                                  proxies=self.proxies).content,
                     features="lxml")
                 flag = True
@@ -414,6 +417,13 @@ class TorrentBot(ContextDecorator):
                 self.get_user_info(user_info_block)
             except Exception as e:
                 print('[ERROR] ' + repr(e))
+                print('try relogin...')
+                self.byrbt_cookies = self.login.relogin()
+                if self.byrbt_cookies is not None:
+                    self.cookie_jar = RequestsCookieJar()
+                    for k, v in self.byrbt_cookies.items():
+                        self.cookie_jar[k] = v
+                time.sleep(1)
 
             try:
                 torrent_table = torrents_soup.find_all('tr', class_='free_bg')

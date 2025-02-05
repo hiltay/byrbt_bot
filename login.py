@@ -24,6 +24,14 @@ class LoginTool:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'}
         self.cookie_save_path = './data/ByrbtCookies.pickle'
 
+    def relogin(self):
+        if os.path.exists(self.cookie_save_path):
+            print("remove cookie!")
+            os.remove(self.cookie_save_path)
+        byrbt_cookies = self.login()
+
+        return byrbt_cookies
+
     def get_url(self, url):
         return self.base_url + url
 
