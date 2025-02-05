@@ -3,4 +3,6 @@
 *.log
 transmission/downloads
 transmission/watch
+data/*
+config/config.ini
 __pycache__

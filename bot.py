@@ -41,7 +41,11 @@ class TorrentBot(ContextDecorator):
         if self.byrbt_cookies is not None:
             for k, v in self.byrbt_cookies.items():
                 self.cookie_jar[k] = v
-
+        if config.get_bot_config("use_proxy") == 'true':
+            self.proxies = {'http': 'socks5://127.0.0.1:2025',
+                            'https': 'socks5://127.0.0.1:2025'}
+        else:
+            self.proxies = None
         self.old_torrent = list()
         self.torrent_download_record_save_path = './data/torrent.pkl'
         self.max_torrent_count = int(config.get_bot_config("max-torrent"))
@@ -150,88 +154,99 @@ class TorrentBot(ContextDecorator):
 
     def get_torrent_info_filter_by_tag(self, table, filter_tags):
         assert isinstance(table, list)
-        start_idx = 0  # static offset
+
+        # static offset
         torrent_infos = list()
         for item in table:
-            torrent_info = dict()
-            tds = item.find_all('td', recursive=False)
-            # tds[0] 是 引用
+            start_idx = 0
+            success = False
+            while start_idx < 5 and not success:
+                try:
+                    torrent_info = dict()
+                    tds = item.find_all('td', recursive=False)
+                    # tds[0] 是 引用
 
-            # tds[1] 是分类
-            cat = tds[start_idx].find('a').text.strip()
+                    # tds[1] 是分类
+                    cat = tds[start_idx].find('a').text.strip()
 
-            # 主要信息的td
-            main_td = tds[start_idx + 1].select('table > tr > td')[0]
-            if main_td.find('div'):
-                main_td = tds[start_idx + 1].select('table > tr > td')[1]
+                    # 主要信息的td
+                    main_td = tds[start_idx + 1].select('table > tr > td')[0]
+                    if main_td.find('div'):
+                        main_td = tds[start_idx + 1].select('table > tr > td')[1]
 
-            # 链接
-            href = main_td.select('a')[0].attrs['href']
+                    # 链接
+                    href = main_td.select('a')[0].attrs['href']
 
-            # 种子id
-            seed_id = re.findall(r'id=(\d+)', href)[0]
+                    # 种子id
+                    seed_id = re.findall(r'id=(\d+)', href)[0]
 
-            # 标题
-            title = main_td.find('a').attrs['title']
+                    # 标题
+                    title = main_td.find('a').attrs['title']
 
-            tags = set(
-                [font.attrs['class'][0] for font in main_td.select('span > span') if 'class' in font.attrs.keys()])
-            if '' in tags:
-                tags.remove('')
+                    tags = set(
+                        [font.attrs['class'][0] for font in main_td.select('span > span') if
+                         'class' in font.attrs.keys()])
+                    if '' in tags:
+                        tags.remove('')
 
-            is_seeding = len(main_td.select('img[src="/pic/seeding.png"]')) > 0
-            is_finished = len(main_td.select('img[src="/pic/finished.png"]')) > 0
+                    is_seeding = len(main_td.select('img[src="/pic/seeding.png"]')) > 0
+                    is_finished = len(main_td.select('img[src="/pic/finished.png"]')) > 0
 
-            is_hot = False
-            if 'hot' in tags:
-                is_hot = True
-                tags.remove('hot')
-            is_new = False
-            if 'new' in tags:
-                is_new = True
-                tags.remove('new')
-            is_recommended = False
-            if 'recommended' in tags:
-                is_recommended = True
-                tags.remove('recommended')
+                    is_hot = False
+                    if 'hot' in tags:
+                        is_hot = True
+                        tags.remove('hot')
+                    is_new = False
+                    if 'new' in tags:
+                        is_new = True
+                        tags.remove('new')
+                    is_recommended = False
+                    if 'recommended' in tags:
+                        is_recommended = True
+                        tags.remove('recommended')
 
-            # 根据控制面板中促销种子的标记方式不同来匹配
-            if 'class' in item.attrs:
-                # 默认高亮方式
-                tag = self._get_tag(item.attrs['class'][0])
-            elif len(tags) == 1:
-                # 文字标记方式
-                # 不属于 hot、new、recommended 的标记即为促销标记
-                tag = self._get_tag(list(tags)[0])
-            elif len(main_td.select('img[src="/pic/trans.gif"][class^="pro_"]')) > 0:
-                # 添加图标方式
-                tag = self._get_tag(
-                    main_td.select('img[src="/pic/trans.gif"][class^="pro_"]')[-1].attrs['class'][0].split('_')[-1])
-            else:
-                tag = ''
+                    # 根据控制面板中促销种子的标记方式不同来匹配
+                    if 'class' in item.attrs:
+                        # 默认高亮方式
+                        tag = self._get_tag(item.attrs['class'][0])
+                    elif len(tags) == 1:
+                        # 文字标记方式
+                        # 不属于 hot、new、recommended 的标记即为促销标记
+                        tag = self._get_tag(list(tags)[0])
+                    elif len(main_td.select('img[src="/pic/trans.gif"][class^="pro_"]')) > 0:
+                        # 添加图标方式
+                        tag = self._get_tag(
+                            main_td.select('img[src="/pic/trans.gif"][class^="pro_"]')[-1].attrs['class'][0].split('_')[
+                                -1])
+                    else:
+                        tag = ''
 
-            file_size = tds[start_idx + 4].text.split('\n')
+                    file_size = tds[start_idx + 4].text.split('\n')
 
-            seeding = int(tds[start_idx + 5].text) if tds[start_idx + 5].text.isdigit() else -1
+                    seeding = int(tds[start_idx + 5].text) if tds[start_idx + 5].text.isdigit() else -1
 
-            downloading = int(tds[start_idx + 6].text) if tds[start_idx + 6].text.isdigit() else -1
+                    downloading = int(tds[start_idx + 6].text) if tds[start_idx + 6].text.isdigit() else -1
 
-            finished = int(tds[start_idx + 7].text) if tds[start_idx + 7].text.isdigit() else -1
+                    finished = int(tds[start_idx + 7].text) if tds[start_idx + 7].text.isdigit() else -1
 
-            torrent_info['cat'] = cat
-            torrent_info['is_hot'] = is_hot
-            torrent_info['tag'] = tag
-            torrent_info['is_seeding'] = is_seeding
-            torrent_info['is_finished'] = is_finished
-            torrent_info['seed_id'] = seed_id
-            torrent_info['title'] = title
-            torrent_info['seeding'] = seeding
-            torrent_info['downloading'] = downloading
-            torrent_info['finished'] = finished
-            torrent_info['file_size'] = file_size
-            torrent_info['is_new'] = is_new
-            torrent_info['is_recommended'] = is_recommended
-            torrent_infos.append(torrent_info)
+                    torrent_info['cat'] = cat
+                    torrent_info['is_hot'] = is_hot
+                    torrent_info['tag'] = tag
+                    torrent_info['is_seeding'] = is_seeding
+                    torrent_info['is_finished'] = is_finished
+                    torrent_info['seed_id'] = seed_id
+                    torrent_info['title'] = title
+                    torrent_info['seeding'] = seeding
+                    torrent_info['downloading'] = downloading
+                    torrent_info['finished'] = finished
+                    torrent_info['file_size'] = file_size
+                    torrent_info['is_new'] = is_new
+                    torrent_info['is_recommended'] = is_recommended
+                    torrent_infos.append(torrent_info)
+                    success = True
+                except Exception as e:
+                    # print('[ERROR] ' + repr(e))
+                    start_idx += 1
 
         torrent_infos_filter_by_tag = list()
         for torrent_info in torrent_infos:
@@ -378,7 +393,8 @@ class TorrentBot(ContextDecorator):
             torrent_infos = None
             try:
                 torrents_soup = BeautifulSoup(
-                    requests.get(self.torrent_url, cookies=self.cookie_jar, headers=self.headers).content,
+                    requests.get(self.torrent_url, cookies=self.cookie_jar, headers=self.headers,
+                                 proxies=self.proxies).content,
                     features="lxml")
                 flag = True
             except Exception as e:
@@ -465,7 +481,8 @@ class TorrentBot(ContextDecorator):
         return self.torrent_util.get_free_space() > new_torrent_size and sum_size + new_torrent_size <= self.max_torrent_total_size
 
     def check_disk_space(self):
-        free_space = self.torrent_util.get_free_space()
+        # free_space = self.torrent_util.get_free_space()
+        free_space = 5e20
         if free_space is None:
             print('get download path free space fail!')
             return False

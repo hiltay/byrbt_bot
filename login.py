@@ -13,7 +13,6 @@ import time
 import os
 
 
-
 class LoginTool:
 
     def __init__(self, config):
@@ -41,15 +40,33 @@ class LoginTool:
 
     def login(self):
         session = requests.session()
+        if self.config.get_bot_config("use_proxy") == 'true':
+            proxies = {'http': 'socks5://127.0.0.1:2025',
+                       'https': 'socks5://127.0.0.1:2025'}
+        else:
+            proxies = None
+        # response = requests.get("https://icanhazip.com/", proxies=proxies)
+        # print(f"当前代理 IP: {response.text}")
+        # print(session.get("https://byr.pt/login"))
+
+        # login_res = session.post(self.get_url('takelogin.php'),
+        #                          headers=self.headers,
+        #                          data=dict(
+        #                              logintype="username",
+        #                              userinput=str(self.config.get_bot_config("username")),
+        #                              password=str(self.config.get_bot_config("passwd")),
+        #                              remember="yes"))
+
         for i in range(5):
-            login_res = session.post(self.get_url('takelogin.php'),
-                                     headers=self.headers,
-                                     data=dict(
-                                         logintype="username",
-                                         userinput=str(self.config.get_bot_config("username")),
-                                         password=str(self.config.get_bot_config("passwd")),
-                                         autologin="yes"))
-            if '最近消息' in login_res.text:
+            login_res = session.post("https://byr.pt/api/v2/login.php", headers=self.headers, json={
+                "type": "username",
+                "username": str(self.config.get_bot_config("username")),
+                "password": str(self.config.get_bot_config("passwd")),
+                "remember": False
+            }, proxies=proxies)
+            json_res = login_res.json()
+            if json_res.get("success", False) is True:
+                # 登录成功
                 cookies = {}
                 for k, v in session.cookies.items():
                     cookies[k] = v
