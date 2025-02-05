@@ -272,7 +272,7 @@ class TorrentBot(ContextDecorator):
                 if torrent_info['seeding'] <= 0 or torrent_info['downloading'] < 0:
                     continue
                 if torrent_info['seeding'] != 0 and float(torrent_info['downloading']) / float(
-                        torrent_info['seeding']) < 0.8:
+                        torrent_info['seeding']) < 0.5:
                     continue
                 file_size = torrent_info['file_size'][0]
                 file_size = file_size.replace('GiB', '')
