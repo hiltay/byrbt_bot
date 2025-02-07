@@ -266,6 +266,8 @@ class TorrentBot(ContextDecorator):
             for torrent_info in torrent_infos:
                 if torrent_info['seed_id'] in self.old_torrent:
                     continue
+                if torrent_info["is_finished"]:
+                    continue
                 # 下载1GB-1TB之间的种子（下载以GB大小结尾的种子，脚本需要不可修改）
                 if 'GiB' not in torrent_info['file_size'][0]:
                     continue
@@ -283,6 +285,8 @@ class TorrentBot(ContextDecorator):
         else:
             # 正常种子选择标准是免费种子并且(下载数/上传数)>0.4
             for torrent_info in torrent_infos:
+                if torrent_info["is_finished"]:
+                    continue
                 if torrent_info['seed_id'] in self.old_torrent:
                     continue
                 # 下载1GB-1TB之间的种子（下载以GB大小结尾的种子，脚本需要不可修改）
